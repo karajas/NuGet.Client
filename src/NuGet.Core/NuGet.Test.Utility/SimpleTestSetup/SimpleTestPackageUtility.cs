@@ -26,9 +26,10 @@ namespace NuGet.Test.Utility
         public static FileInfo CreateFullPackage(
            string repositoryDir,
            string id,
-           string version)
+           string version,
+           bool isSymbolPackage = false)
         {
-            return CreateFullPackage(repositoryDir, id, version, new PackageDependency[0]);
+            return CreateFullPackage(repositoryDir, id, version, new PackageDependency[0], isSymbolPackage);
         }
 
         /// <summary>
@@ -38,13 +39,16 @@ namespace NuGet.Test.Utility
            string repositoryDir,
            string id,
            string version,
-           IEnumerable<PackageDependency> dependencies)
+           IEnumerable<PackageDependency> dependencies,
+           bool isSymbolPackage = false)
         {
             var package = new SimpleTestPackageContext()
             {
                 Id = id,
                 Version = version
             };
+
+            package.IsSymbolPackage = isSymbolPackage;
 
             package.Dependencies.AddRange(dependencies.Select(d => new SimpleTestPackageContext()
             {
@@ -69,7 +73,8 @@ namespace NuGet.Test.Utility
             var runtimeJson = packageContext.RuntimeJson;
 
             var pathResolver = new VersionFolderPathResolver(null);
-            var packagePath = Path.Combine(repositoryDir, $"{id}.{version.ToString()}.nupkg");
+            var packageName = packageContext.IsSymbolPackage ? $"{id}.{version.ToString()}.symbols.nupkg" : $"{id}.{version.ToString()}.nupkg";
+            var packagePath = Path.Combine(repositoryDir, packageName);
             var file = new FileInfo(packagePath);
 
             file.Directory.Create();

@@ -15,6 +15,7 @@ using NuGet.Configuration;
 using NuGet.Packaging;
 using NuGet.Packaging.Core;
 using NuGet.Versioning;
+using Newtonsoft.Json;
 
 namespace NuGet.Protocol.Core.Types
 {
@@ -24,6 +25,11 @@ namespace NuGet.Protocol.Core.Types
     public class PackageUpdateResource : INuGetResource
     {
         private const string ServiceEndpoint = "/api/v2/package";
+        private const string ApiKeyHeader = "X-NuGet-ApiKey";
+        private const string TempApiKeyServiceEndpoint = "create-verification-key/{0}/{1}";
+        private const string NuGetClientVersionHeader = "X-NuGet-Client-Version";
+        private const string NullApiKey = "ffffffff-0000-ffff-0000-ffffffffffff";
+
 
         private HttpSource _httpSource;
         private string _source;
@@ -57,10 +63,17 @@ namespace NuGet.Protocol.Core.Types
             {
                 var requestTimeout = TimeSpan.FromSeconds(timeoutInSecond);
                 tokenSource.CancelAfter(requestTimeout);
-
+                bool packageUseTempApiKey = false;
+                bool symbolUseTempApiKey = false;
                 var apiKey = getApiKey(_source);
 
-                await PushPackage(packagePath, _source, apiKey, requestTimeout, log, tokenSource.Token);
+                // If user push to https://nuget.smbsrc.net/ directly, use temp api key.
+                if (_source.Equals(NuGetConstants.DefaultSymbolServerUrl, StringComparison.OrdinalIgnoreCase))
+                {
+                    packageUseTempApiKey = true;
+                }
+
+                await PushPackage(packagePath, _source, apiKey, requestTimeout, log, packageUseTempApiKey, tokenSource.Token);
 
                 // symbolSource is only set when:
                 // - The user specified it on the command line
@@ -68,7 +81,15 @@ namespace NuGet.Protocol.Core.Types
                 if (!string.IsNullOrEmpty(symbolSource))
                 {
                     string symbolApiKey = getSymbolApiKey(symbolSource);
-                    await PushSymbols(packagePath, symbolSource, symbolApiKey, requestTimeout, log, tokenSource.Token);
+
+                    // If symbol source is nuget.smbsr.net, always use temp key.
+                    // If package source is nuget.org and symbol api key is the same as package api key, use temp key
+                    if (symbolSource.Equals(NuGetConstants.DefaultSymbolServerUrl, StringComparison.OrdinalIgnoreCase) 
+                        ||(IsSourceNuGetOrg() && apiKey == symbolApiKey))
+                    {
+                        symbolUseTempApiKey = true; 
+                    }
+                    await PushSymbols(packagePath, symbolSource, symbolApiKey, requestTimeout, log, symbolUseTempApiKey, tokenSource.Token);
                 }
             }
         }
@@ -113,6 +134,7 @@ namespace NuGet.Protocol.Core.Types
             string apiKey,
             TimeSpan requestTimeout,
             ILogger log,
+            bool useTempApiKey,
             CancellationToken token)
         {
             // Get the symbol package for this package
@@ -132,7 +154,7 @@ namespace NuGet.Protocol.Core.Types
                         Strings.DefaultSymbolServer));
                 }
 
-                await PushPackage(symbolPackagePath, source, apiKey, requestTimeout, log, token);
+                await PushPackage(symbolPackagePath, source, apiKey, requestTimeout, log, useTempApiKey, token);
             }
         }
 
@@ -151,6 +173,7 @@ namespace NuGet.Protocol.Core.Types
             string apiKey,
             TimeSpan requestTimeout,
             ILogger log,
+            bool useTempApiKey,
             CancellationToken token)
         {
             var sourceUri = UriUtility.CreateSourceUri(source);
@@ -168,7 +191,15 @@ namespace NuGet.Protocol.Core.Types
 
             foreach (string packageToPush in packagesToPush)
             {
-                await PushPackageCore(source, apiKey, packageToPush, requestTimeout, log, token);
+                var packageApiKey = apiKey;
+                if (useTempApiKey)
+                {
+                    using (var packageReader = new PackageArchiveReader(packageToPush))
+                    {
+                        packageApiKey = await GetSecureApiKey(packageReader.GetIdentity(), apiKey, log, token);
+                    }
+                }
+                await PushPackageCore(source, packageApiKey, packageToPush, requestTimeout, log, token);
             }
         }
 
@@ -313,6 +344,7 @@ namespace NuGet.Protocol.Core.Types
             // Send the data in chunks so that it can be canceled if auth fails.
             // Otherwise the whole package needs to be sent to the server before the PUT fails.
             request.Headers.TransferEncodingChunked = true;
+            request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
 
             if (hasApiKey)
             {
@@ -525,6 +557,67 @@ namespace NuGet.Protocol.Core.Types
             }
 
             return true;
+        }
+
+        // Get a temp API key from nuget.org for pushing to https://nuget.smbsrc.net/
+        private async Task<string> GetSecureApiKey(PackageIdentity packageIdentity, string apiKey, ILogger logger, CancellationToken token)
+        {
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                return apiKey;
+            }
+            var serviceEndpointUrl = GetServiceEndpointUrl(NuGetConstants.DefaultGalleryServerUrl, string.Format(TempApiKeyServiceEndpoint, packageIdentity.Id, packageIdentity.Version));
+
+            try
+            {
+                return await _httpSource.ProcessStreamAsync(
+                    new HttpSourceRequest(
+                        () =>
+                        {
+                            var request = HttpRequestMessageFactory.Create(
+                                HttpMethod.Put,
+                                serviceEndpointUrl,
+                                new HttpRequestMessageConfiguration(
+                                    logger: logger,
+                                    promptOn403: false));
+                            request.Headers.Add(ApiKeyHeader, apiKey);
+                            request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
+                            return request;
+                       }),
+                    async stream =>
+                    {
+                        string returnKey = NullApiKey;
+                        if (stream != null)
+                        {
+                            using (var reader = new StreamReader(await stream.AsSeekableStreamAsync()))
+                            using (var jsonReader = new JsonTextReader(reader))
+                            {
+                                var serializer = JsonSerializer.Create();
+                                var json = serializer.Deserialize<Dictionary<string, string>>(jsonReader);
+                                string key;
+                                if (json.TryGetValue("Key", out key))
+                                {
+                                    returnKey = key;
+                                }
+                            }
+                        }
+                        return returnKey;
+                    },
+                   logger,
+                   token);
+            }
+            // If the package doesn't exist on nuget.org, nuget symbol server will ignore the api key.
+            // In this case, any api key should works, just set api key to some value here.
+            catch (HttpRequestException)
+            {
+                return NullApiKey;
+            }
+        }
+
+        private bool IsSourceNuGetOrg()
+        {
+            return SourceUri.Host.Equals(NuGetConstants.NuGetHostName, StringComparison.OrdinalIgnoreCase) // e.g. nuget.org
+                        || SourceUri.Host.EndsWith("." + NuGetConstants.NuGetHostName, StringComparison.OrdinalIgnoreCase);// *.nuget.org, e.g. www.nuget.org
         }
     }
 }

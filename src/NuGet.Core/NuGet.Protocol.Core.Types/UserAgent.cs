@@ -22,9 +22,12 @@ namespace NuGet.Protocol.Core.Types
             }
 
             UserAgentString = builder.Build();
+            UserAgentVersion = builder.NuGetClientVersion;
         }
 
         public static string UserAgentString { get; private set; }
+
+        public static string UserAgentVersion { get; private set; }
 
         /// <summary>
         /// Set user agent string on HttpClient to the static string.
