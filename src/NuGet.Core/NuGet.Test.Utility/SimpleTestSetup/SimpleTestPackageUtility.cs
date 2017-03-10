@@ -26,10 +26,9 @@ namespace NuGet.Test.Utility
         public static FileInfo CreateFullPackage(
            string repositoryDir,
            string id,
-           string version,
-           bool isSymbolPackage = false)
+           string version)
         {
-            return CreateFullPackage(repositoryDir, id, version, new PackageDependency[0], isSymbolPackage);
+            return CreateFullPackage(repositoryDir, id, version, new PackageDependency[0]);
         }
 
         /// <summary>
@@ -39,16 +38,13 @@ namespace NuGet.Test.Utility
            string repositoryDir,
            string id,
            string version,
-           IEnumerable<PackageDependency> dependencies,
-           bool isSymbolPackage = false)
+           IEnumerable<PackageDependency> dependencies)
         {
             var package = new SimpleTestPackageContext()
             {
                 Id = id,
                 Version = version
             };
-
-            package.IsSymbolPackage = isSymbolPackage;
 
             package.Dependencies.AddRange(dependencies.Select(d => new SimpleTestPackageContext()
             {
@@ -57,6 +53,21 @@ namespace NuGet.Test.Utility
                 Include = string.Join(",", d.Include),
                 Exclude = string.Join(",", d.Include),
             }));
+
+            return CreateFullPackage(repositoryDir, package);
+        }
+
+        public static FileInfo CreateSymbolPackage(
+           string repositoryDir,
+           string id,
+           string version)
+        {
+            var package = new SimpleTestPackageContext()
+            {
+                Id = id,
+                Version = version,
+                IsSymbolPackage = true
+            };
 
             return CreateFullPackage(repositoryDir, package);
         }

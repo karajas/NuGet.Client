@@ -4,7 +4,7 @@
 using System;
 using System.Net.Http;
 using NuGet.Common;
-using NuGet.Protocol.Core.Types;
+using NuGet.Packaging;
 
 namespace NuGet.Protocol
 {
@@ -102,7 +102,7 @@ namespace NuGet.Protocol
 
             var request = new HttpRequestMessage(method, requestUri);
             request.SetConfiguration(configuration);
-            request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
+            request.Headers.Add(NuGetClientVersionHeader, MinClientVersionUtility.GetNuGetClientVersion().ToNormalizedString());
 
             return request;
         }
