@@ -26,8 +26,11 @@ namespace NuGet.Protocol.Core.Types
     {
         private const string ServiceEndpoint = "/api/v2/package";
         private const string ApiKeyHeader = "X-NuGet-ApiKey";
+
+        /// <summary>
+        /// Create temporary verification api key endpoint: "create-verification-key/[package id]/[package version]"
+        /// </summary>
         private const string TempApiKeyServiceEndpoint = "create-verification-key/{0}/{1}";
-        private const string NuGetClientVersionHeader = "X-NuGet-Client-Version";
         private const string NullApiKey = "ffffffff-0000-ffff-0000-ffffffffffff";
 
 
@@ -344,7 +347,6 @@ namespace NuGet.Protocol.Core.Types
             // Send the data in chunks so that it can be canceled if auth fails.
             // Otherwise the whole package needs to be sent to the server before the PUT fails.
             request.Headers.TransferEncodingChunked = true;
-            request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
 
             if (hasApiKey)
             {
@@ -575,7 +577,7 @@ namespace NuGet.Protocol.Core.Types
 
             try
             {
-                return await _httpSource.ProcessStreamAsync(
+                var result = await _httpSource.GetJObjectAsync(
                     new HttpSourceRequest(
                         () =>
                         {
@@ -586,30 +588,12 @@ namespace NuGet.Protocol.Core.Types
                                     logger: logger,
                                     promptOn403: false));
                             request.Headers.Add(ApiKeyHeader, apiKey);
-                            request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
                             return request;
                         }),
-                    async stream =>
-                    {
-                        string returnKey = NullApiKey;
-                        if (stream != null)
-                        {
-                            using (var reader = new StreamReader(await stream.AsSeekableStreamAsync()))
-                            using (var jsonReader = new JsonTextReader(reader))
-                            {
-                                var serializer = JsonSerializer.Create();
-                                var json = serializer.Deserialize<Dictionary<string, string>>(jsonReader);
-                                string key;
-                                if (json.TryGetValue("Key", out key))
-                                {
-                                    returnKey = key;
-                                }
-                            }
-                        }
-                        return returnKey;
-                    },
                    logger,
                    token);
+
+                return result.Value<string>("Key") ?? NullApiKey;
             }
             // If the package doesn't exist on nuget.org, nuget symbol server will ignore the api key.
             // In this case, any api key should works, just set api key to some value here.

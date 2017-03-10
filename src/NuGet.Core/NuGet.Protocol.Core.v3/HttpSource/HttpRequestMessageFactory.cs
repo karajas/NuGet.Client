@@ -4,6 +4,7 @@
 using System;
 using System.Net.Http;
 using NuGet.Common;
+using NuGet.Protocol.Core.Types;
 
 namespace NuGet.Protocol
 {
@@ -13,6 +14,8 @@ namespace NuGet.Protocol
     /// </summary>
     public static class HttpRequestMessageFactory
     {
+        private const string NuGetClientVersionHeader = "X-NuGet-Client-Version";
+
         /// <summary>
         /// Creates an instance of <see cref="HttpRequestMessage"/>.
         /// </summary>
@@ -99,6 +102,7 @@ namespace NuGet.Protocol
 
             var request = new HttpRequestMessage(method, requestUri);
             request.SetConfiguration(configuration);
+            request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
 
             return request;
         }
