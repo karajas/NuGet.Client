@@ -5,11 +5,16 @@ $DefaultMSBuildVersion = 15
 
 # The pack version can be inferred from the .nuspec files on disk. This is only necessary as long
 # as the following issue is open: https://github.com/NuGet/Home/issues/3530
-$PackageReleaseVersion = "4.3.0"
+$PackageReleaseVersion = "4.0.1"
 
 $NuGetClientRoot = Split-Path -Path $PSScriptRoot -Parent
 $CLIRoot = Join-Path $NuGetClientRoot cli
 $CLIRootTest = Join-Path $NuGetClientRoot cli_test
+if($env:CLI_ROOT)
+{
+  $CLIRoot = $env:CLI_ROOT
+  $CLIRootTest = $env:CLI_ROOT
+}
 $Nupkgs = Join-Path $NuGetClientRoot nupkgs
 $Artifacts = Join-Path $NuGetClientRoot artifacts
 $ReleaseNupkgs = Join-Path $Artifacts ReleaseNupkgs
@@ -21,6 +26,12 @@ $DotNetExeTest = Join-Path $CLIRootTest 'dotnet.exe'
 $NuGetExe = Join-Path $NuGetClientRoot '.nuget\nuget.exe'
 $XunitConsole = Join-Path $NuGetClientRoot 'packages\xunit.runner.console.2.1.0\tools\xunit.console.exe'
 $ILMerge = Join-Path $NuGetClientRoot 'packages\ILMerge.2.14.1208\tools\ILMerge.exe'
+if($env:NUGET_INSTALL_PATH -and $env:NUGET_PACKAGES )
+{
+  $NuGetExe = Join-Path $env:NUGET_INSTALL_PATH 'nuget.exe'
+  $XunitConsole = Join-Path $env:NUGET_PACKAGES 'xunit.runner.console.2.1.0\tools\xunit.console.exe'
+  $ILMerge = Join-Path $env:NUGET_PACKAGES 'ILMerge.2.14.1208\tools\ILMerge.exe'
+}
 
 Set-Alias dotnet $DotNetExe
 Set-Alias nuget $NuGetExe
@@ -181,6 +192,7 @@ Function Install-NuGet {
         [switch]$CI
     )
     if ($Force -or -not (Test-Path $NuGetExe)) {
+        New-Item (Split-Path -Path $NuGetExe -Parent) -Type directory -ErrorAction Ignore
         Trace-Log 'Downloading nuget.exe'
         if($CI){
             wget https://dist.nuget.org/win-x86-commandline/v3.5.0/nuget.exe -OutFile $NuGetExe
@@ -219,7 +231,10 @@ Function Install-DotnetCLI {
     }
 
     $env:DOTNET_HOME=$cli.Root
-    $env:DOTNET_INSTALL_DIR=$NuGetClientRoot
+    if (!$env:DOTNET_INSTALL_DIR)
+    {
+      $env:DOTNET_INSTALL_DIR=$NuGetClientRoot
+    }
 
     if ($Force -or -not (Test-Path $cli.DotNetExe)) {
         Trace-Log 'Downloading .NET CLI'
@@ -404,15 +419,8 @@ Function Set-DelaySigning {
 }
 
 Function Get-BuildNumber() {
-    $SemanticVersionDate = '2017-02-27'
-    try {
-        [uint16](((Get-Date) - (Get-Date $SemanticVersionDate)).TotalMinutes / 5)
-    }
-    catch {
-        # Build number is a 16-bit integer. The limitation is imposed by VERSIONINFO.
-        # https://msdn.microsoft.com/en-gb/library/aa381058.aspx
-        Error-Log "Build number is out of range! Consider advancing SemanticVersionDate." -Fatal
-    }
+    $SemanticVersionDate = '2016-07-13'
+    [int](((Get-Date) - (Get-Date $SemanticVersionDate)).TotalMinutes / 5)
 }
 
 Function Format-BuildNumber([int]$BuildNumber) {

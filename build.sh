@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
 while true ; do
-	case "$1" in
-		-c|--clear-cache) CLEAR_CACHE=1 ; shift ;;
-		--) shift ; break ;;
-		*) shift ; break ;;
-	esac
+    case "$1" in
+        -c|--clear-cache) CLEAR_CACHE=1 ; shift ;;
+        --skip-build) SKIP_BUILD=1 ; shift ;;
+        --) shift ; break ;;
+        *) shift ; break ;;
+    esac
 done
 
 RESULTCODE=0
@@ -43,19 +44,24 @@ git submodule update
 # clear caches
 if [ "$CLEAR_CACHE" == "1" ]
 then
-	# echo "Clearing the nuget web cache folder"
-	# rm -r -f ~/.local/share/NuGet/*
+    # echo "Clearing the nuget web cache folder"
+    # rm -r -f ~/.local/share/NuGet/*
 
-	echo "Clearing the nuget packages folder"
-	rm -r -f ~/.nuget/packages/*
+    echo "Clearing the nuget packages folder"
+    rm -r -f ~/.nuget/packages/*
 fi
 
 # restore packages
 echo "$DOTNET restore src/NuGet.Core test/NuGet.Core.Tests --verbosity minimal"
 $DOTNET restore src/NuGet.Core test/NuGet.Core.Tests --verbosity minimal
 if [ $? -ne 0 ]; then
-	echo "Restore failed!!"
-	exit 1
+    echo "Restore failed!!"
+    exit 1
+fi
+
+if [ "$SKIP_BUILD" == "1" ]; then
+  echo "Skipping product build..."
+  exit 0
 fi
 
 # build xplat dll
@@ -65,32 +71,32 @@ $DOTNET build src/NuGet.Core/NuGet.CommandLine.XPlat --configuration release --f
 # run tests
 for testProject in `find test/NuGet.Core.Tests -type f -name project.json`
 do
-	testDir="$(pwd)/$(dirname $testProject)"
+    testDir="$(pwd)/$(dirname $testProject)"
 
-	if grep -q "netcoreapp1.0" "$testProject"; then
-		pushd $testDir
+    if grep -q "netcoreapp1.0" "$testProject"; then
+        pushd $testDir
 
-		case "$(uname -s)" in
-			Linux)
-				echo "$DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Darwin"
-				$DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Darwin
-				;;
-			Darwin)
-				echo "$DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Linux"
-				$DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Linux
-				;;
-			*) ;;
-		esac
+        case "$(uname -s)" in
+            Linux)
+                echo "$DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Darwin"
+                $DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Darwin
+                ;;
+            Darwin)
+                echo "$DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Linux"
+                $DOTNET test $testDir --configuration release --framework netcoreapp1.0 -notrait Platform=Windows -notrait Platform=Linux
+                ;;
+            *) ;;
+        esac
 
-		if [ $? -ne 0 ]; then
-			echo "$testDir FAILED on CoreCLR"
-			RESULTCODE=1
-		fi
+        if [ $? -ne 0 ]; then
+            echo "$testDir FAILED on CoreCLR"
+            RESULTCODE=1
+        fi
 
-		popd
-	else
-		echo "Skipping the tests in $testDir on CoreCLR"
-	fi
+        popd
+    else
+        echo "Skipping the tests in $testDir on CoreCLR"
+    fi
 
 done
 
