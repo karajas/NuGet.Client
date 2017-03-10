@@ -288,7 +288,7 @@ namespace NuGet.Protocol.Tests
                 Assert.NotNull(sourceClientVersionValues.First());
             }
         }
-        
+
         [Fact]
         public async Task PackageUpdateResource_NuGetOrgSourceOnlyPushing()
         {

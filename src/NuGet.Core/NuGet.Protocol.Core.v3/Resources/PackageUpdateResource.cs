@@ -84,10 +84,10 @@ namespace NuGet.Protocol.Core.Types
 
                     // If symbol source is nuget.smbsr.net, always use temp key.
                     // If package source is nuget.org and symbol api key is the same as package api key, use temp key
-                    if (symbolSource.Equals(NuGetConstants.DefaultSymbolServerUrl, StringComparison.OrdinalIgnoreCase) 
-                        ||(IsSourceNuGetOrg() && apiKey == symbolApiKey))
+                    if (symbolSource.Equals(NuGetConstants.DefaultSymbolServerUrl, StringComparison.OrdinalIgnoreCase)
+                        || (IsSourceNuGetOrg() && apiKey == symbolApiKey))
                     {
-                        symbolUseTempApiKey = true; 
+                        symbolUseTempApiKey = true;
                     }
                     await PushSymbols(packagePath, symbolSource, symbolApiKey, requestTimeout, log, symbolUseTempApiKey, tokenSource.Token);
                 }
@@ -560,13 +560,18 @@ namespace NuGet.Protocol.Core.Types
         }
 
         // Get a temp API key from nuget.org for pushing to https://nuget.smbsrc.net/
-        private async Task<string> GetSecureApiKey(PackageIdentity packageIdentity, string apiKey, ILogger logger, CancellationToken token)
+        private async Task<string> GetSecureApiKey(
+            PackageIdentity packageIdentity,
+            string apiKey,
+            ILogger logger,
+            CancellationToken token)
         {
             if (string.IsNullOrEmpty(apiKey))
             {
                 return apiKey;
             }
-            var serviceEndpointUrl = GetServiceEndpointUrl(NuGetConstants.DefaultGalleryServerUrl, string.Format(TempApiKeyServiceEndpoint, packageIdentity.Id, packageIdentity.Version));
+            var serviceEndpointUrl = GetServiceEndpointUrl(NuGetConstants.DefaultGalleryServerUrl,
+                string.Format(TempApiKeyServiceEndpoint, packageIdentity.Id, packageIdentity.Version));
 
             try
             {
@@ -583,7 +588,7 @@ namespace NuGet.Protocol.Core.Types
                             request.Headers.Add(ApiKeyHeader, apiKey);
                             request.Headers.Add(NuGetClientVersionHeader, UserAgent.UserAgentVersion);
                             return request;
-                       }),
+                        }),
                     async stream =>
                     {
                         string returnKey = NullApiKey;
