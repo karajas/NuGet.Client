@@ -103,5 +103,38 @@ namespace NuGet.Protocol
 
             return request;
         }
+        
+        /// <summary>
+        /// Creates an instance of <see cref="HttpRequestMessage"/>.
+        /// </summary>
+        /// <param name="method">Desired HTTP verb</param>
+        /// <param name="requestUri">Request URI</param>
+        /// <param name="configuration">The request configuration</param>
+        /// <returns>Instance of <see cref="HttpRequestMessage"/></returns>
+        public static HttpRequestMessage Create(
+            HttpMethod method,
+            Uri requestUri,
+            HttpRequestMessageConfiguration configuration,
+            string sasToken)
+        {
+            if (requestUri == null)
+            {
+                throw new ArgumentNullException(nameof(requestUri));
+            }
+
+            if (configuration == null)
+            {
+                throw new ArgumentNullException(nameof(configuration));
+            }
+            if (sasToken == null)
+            {
+                throw new ArgumentNullException(nameof(sasToken));
+            }
+            
+            var request = new HttpRequestMessage(method, requestUri+sasToken);
+            request.SetConfiguration(configuration);
+
+            return request;
+        }
     }
 }
